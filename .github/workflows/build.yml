@@ -1,0 +1,102 @@
+name: Build Python Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [amd64, aarch64]
+        python-version: [3.11, 3.12]
+
+    container:
+      image: quay.io/pypa/manylinux2014_${{ matrix.platform }}
+      options: --platform ${{ matrix.platform == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build wheels
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          PYTHON_VERSION_NO_DOT=${PYTHON_VERSION//./}
+          PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
+          "${PYBIN}/pip" install maturin
+          "${PYBIN}/maturin" build --release --strip --interpreter "${PYBIN}/python"
+
+      - name: Run tests
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          PYTHON_VERSION_NO_DOT=${PYTHON_VERSION//./}
+          PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
+          "${PYBIN}/pip" install pytest
+          "${PYBIN}/pip" install target/wheels/*.whl
+          "${PYBIN}/python" -m pytest tests/
+
+      - name: Upload raw wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-wheels-${{ matrix.platform }}-py${{ matrix.python-version }}
+          path: target/wheels/*.whl
+          if-no-files-found: error
+
+  audit:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux2014_x86_64
+
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: raw-wheels-*
+          path: raw-wheels
+          merge-multiple: true
+
+      - name: Run auditwheel
+        run: |
+          mkdir -p dist/
+          for whl in raw-wheels/*.whl; do
+            auditwheel repair "$whl" -w dist/
+          done
+
+      - name: Upload repaired wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaired-wheels
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish:
+    needs: audit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install twine
+          python -m twine upload dist/*.whl
