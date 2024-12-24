@@ -15,7 +15,7 @@ jobs:
         python-version: [3.11, 3.12]
 
     container:
-      image: quay.io/pypa/manylinux2014_${{ matrix.platform }}
+      image: quay.io/pypa/manylinux2014_${{ matrix.platform == 'amd64' && 'x86_64' || 'aarch64' }}
       options: --platform ${{ matrix.platform == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
 
     steps:
@@ -35,6 +35,10 @@ jobs:
           PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
           "${PYBIN}/pip" install maturin
           "${PYBIN}/maturin" build --release --strip --interpreter "${PYBIN}/python"
+          mkdir -p dist/
+          for whl in target/wheels/*.whl; do
+              auditwheel repair "$whl" -w dist/
+          done
 
       - name: Run tests
         env:
@@ -43,46 +47,18 @@ jobs:
           PYTHON_VERSION_NO_DOT=${PYTHON_VERSION//./}
           PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
           "${PYBIN}/pip" install pytest
-          "${PYBIN}/pip" install target/wheels/*.whl
+          "${PYBIN}/pip" install dist/*.whl
           "${PYBIN}/python" -m pytest tests/
 
-      - name: Upload raw wheels
+      - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: raw-wheels-${{ matrix.platform }}-py${{ matrix.python-version }}
-          path: target/wheels/*.whl
-          if-no-files-found: error
-
-  audit:
-    needs: build
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/pypa/manylinux2014_x86_64
-
-    steps:
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: raw-wheels-*
-          path: raw-wheels
-          merge-multiple: true
-
-      - name: Run auditwheel
-        run: |
-          mkdir -p dist/
-          for whl in raw-wheels/*.whl; do
-            auditwheel repair "$whl" -w dist/
-          done
-
-      - name: Upload repaired wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: repaired-wheels
+          name: wheels-${{ matrix.platform }}-py${{ matrix.python-version }}
           path: dist/*.whl
           if-no-files-found: error
 
   publish:
-    needs: audit
+    needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
