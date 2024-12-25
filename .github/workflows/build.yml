@@ -36,6 +36,7 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
           CIBW_BEFORE_ALL_MACOS: rustup target add x86_64-apple-darwin
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=10.12
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
       - uses: actions/upload-artifact@v4
         with:
