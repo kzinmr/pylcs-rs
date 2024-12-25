@@ -34,6 +34,7 @@ jobs:
           CIBW_TEST_COMMAND: python -m pytest {project}/tests
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
+          CIBW_BEFORE_ALL_MACOS: rustup target add x86_64-apple-darwin
 
       - uses: actions/upload-artifact@v4
         with:
