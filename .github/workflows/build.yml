@@ -7,58 +7,41 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        platform: [amd64, aarch64]
-        python-version: [3.11, 3.12]
-
-    container:
-      image: quay.io/pypa/manylinux2014_${{ matrix.platform == 'amd64' && 'x86_64' || 'aarch64' }}
-      options: --platform ${{ matrix.platform == 'amd64' && 'linux/amd64' || 'linux/arm64' }}
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        shell: bash
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel==2.22.0
 
       - name: Build wheels
+        run: python -m cibuildwheel --output-dir wheelhouse
         env:
-          PYTHON_VERSION: ${{ matrix.python-version }}
-        run: |
-          PYTHON_VERSION_NO_DOT=${PYTHON_VERSION//./}
-          PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
-          "${PYBIN}/pip" install maturin
-          "${PYBIN}/maturin" build --release --strip --interpreter "${PYBIN}/python"
-          mkdir -p dist/
-          for whl in target/wheels/*.whl; do
-              auditwheel repair "$whl" -w dist/
-          done
+          CIBW_BUILD: cp311-* cp312-*
+          CIBW_ARCHS_LINUX: x86_64 aarch64
+          CIBW_ARCHS_MACOS: x86_64 arm64
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: python -m pytest {project}/tests
+          CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
+          CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
 
-      - name: Run tests
-        env:
-          PYTHON_VERSION: ${{ matrix.python-version }}
-        run: |
-          PYTHON_VERSION_NO_DOT=${PYTHON_VERSION//./}
-          PYBIN=/opt/python/cp"${PYTHON_VERSION_NO_DOT}"/bin
-          "${PYBIN}/pip" install pytest
-          "${PYBIN}/pip" install dist/*.whl
-          "${PYBIN}/python" -m pytest tests/
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.platform }}-py${{ matrix.python-version }}
-          path: dist/*.whl
-          if-no-files-found: error
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
 
   publish:
-    needs: build
+    needs: build_wheels
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -75,4 +58,4 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           python -m pip install twine
-          python -m twine upload dist/*.whl
+          python -m twine upload dist/**/*.whl

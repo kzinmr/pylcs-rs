@@ -31,9 +31,14 @@ testpaths = [
 
 [dependency-groups]
 dev = [
-    "maturin>=1.7.8",
     "pytest>=8.3.4",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=6.0"]
+
+[tool.cibuildwheel]
+# Skip musllinux builds
+skip = ["*-musllinux_*"]
+test-requires = ["pytest>=6.0"]
+test-command = "pytest {project}/tests"
