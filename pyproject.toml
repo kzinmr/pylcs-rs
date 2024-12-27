@@ -29,9 +29,6 @@ dev = [
     "pytest>=8.3.4",
 ]
 
-[project.optional-dependencies]
-test = ["pytest>=6.0"]
-
 [tool.cibuildwheel]
 # Skip musllinux builds
 skip = ["*-musllinux_*"]
