@@ -13,24 +13,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - os: windows-latest
-            wsl: true
 
     steps:
       - uses: actions/checkout@v4
       - name: Set up QEMU
-        if: runner.os == 'Linux' || (runner.os == 'Windows' && matrix.wsl)
+        if: runner.os == 'Linux'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
-
-      - name: Setup WSL
-        if: matrix.wsl
-        uses: Vampire/setup-wsl@v2
-        with:
-          distribution: Ubuntu-22.04
-
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
@@ -44,11 +34,7 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
           CIBW_BEFORE_ALL_MACOS: rustup target add x86_64-apple-darwin
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=11.0
-          CIBW_BEFORE_ALL_WINDOWS: |
-            rustup target add x86_64-pc-windows-msvc
-            wsl --install -d Ubuntu
-            wsl rustup default stable
-          CIBW_ENVIRONMENT_WINDOWS: "PATH=%PATH%;%USERPROFILE%\\.cargo\bin"
+          CIBW_BEFORE_ALL_WINDOWS: rustup target add x86_64-pc-windows-msvc
 
       - uses: actions/upload-artifact@v4
         with:
