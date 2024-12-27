@@ -19,19 +19,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up WSL and install dependencies for Windows
-        if: runner.os == 'Windows' && matrix.wsl == true
-        run: |
-          wsl --install -d Ubuntu
-          wsl sudo apt-get update
-          wsl sudo apt-get install -y build-essential python3 python3-pip python3-venv
-
       - name: Set up QEMU
         if: runner.os == 'Linux' || (runner.os == 'Windows' && matrix.wsl)
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm64
+          platforms: all
+
+      - name: Setup WSL
+        if: matrix.wsl
+        uses: Vampire/setup-wsl@v2
+        with:
+          distribution: Ubuntu-22.04
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
@@ -48,11 +46,9 @@ jobs:
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=11.0
           CIBW_BEFORE_ALL_WINDOWS: |
             rustup target add x86_64-pc-windows-msvc
-            if [ "${{ matrix.wsl }}" == "true" ]; then
-              wsl rustup default stable
-              wsl rustup target add x86_64-unknown-linux-gnu
-            fi
-          CIBW_ENVIRONMENT_WINDOWS: "PATH=%PATH%;%USERPROFILE%\\.cargo\\bin"
+            wsl --install -d Ubuntu
+            wsl rustup default stable
+          CIBW_ENVIRONMENT_WINDOWS: "PATH=%PATH%;%USERPROFILE%\\.cargo\bin"
 
       - uses: actions/upload-artifact@v4
         with:
